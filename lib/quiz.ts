@@ -72,3 +72,15 @@ export function grade(progress: Progress, k: string, correct: boolean): Progress
 
 export const learned = (pool: Country[], progress: Progress, mode: Mode) =>
   pool.filter((c) => (progress[key(mode, c)] ?? 0) >= MAX_BOX).length;
+
+// Trust boundary: text pasted by the user. Keeps only valid box values.
+export function parseProgress(text: string): Progress | null {
+  try {
+    const o = JSON.parse(text);
+    if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+    const valid = Object.entries(o).filter(([, v]) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_BOX);
+    return valid.length ? (Object.fromEntries(valid) as Progress) : null;
+  } catch {
+    return null;
+  }
+}

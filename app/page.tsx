@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import data from "@/data/countries.json";
 import {
-  REGIONS, answerOf, buildOptions, buildPool, grade, key, learned, pickQuestion,
+  REGIONS, answerOf, buildOptions, buildPool, grade, key, learned, parseProgress, pickQuestion,
   type Country, type Mode, type Progress, type Settings,
 } from "@/lib/quiz";
 
@@ -42,9 +42,16 @@ function Game() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
 
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify({ settings, progress }));
   }, [settings, progress]);
+
+  // Ask the browser not to evict the saved progress.
+  useEffect(() => {
+    navigator.storage?.persist?.();
+  }, []);
 
   const pool = buildPool(COUNTRIES, settings);
   const { mode } = settings;
@@ -57,8 +64,32 @@ function Game() {
 
   function answer(c: Country) {
     if (!question || picked) return;
+    const ok = c.code === question.country.code;
+    const p = grade(progress, key(mode, question.country), ok);
+    setProgress(p);
+    if (ok) return next(p, question.country.code);
+    // Show the right answer briefly after a miss, then move on.
     setPicked(c.code);
-    setProgress(grade(progress, key(mode, question.country), c.code === question.country.code));
+    timer.current = setTimeout(() => next(p, question.country.code), 1500);
+  }
+
+  function back() {
+    clearTimeout(timer.current);
+    setPicked(null);
+    setQuestion(null);
+  }
+
+  async function exportProgress() {
+    await navigator.clipboard.writeText(JSON.stringify(progress));
+    alert("Fortschritt kopiert.");
+  }
+
+  function importProgress() {
+    const text = prompt("Kopierten Fortschritt hier einfügen:");
+    if (text === null) return;
+    const p = parseProgress(text);
+    if (p) setProgress(p);
+    else alert("Das sieht nicht nach gültigem Fortschritt aus.");
   }
 
   const toggleRegion = (r: string) =>
@@ -72,7 +103,7 @@ function Game() {
     return (
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <Button variant="ghost" size="sm" onClick={() => setQuestion(null)}>← Zurück</Button>
+          <Button variant="ghost" size="sm" onClick={back}>← Zurück</Button>
           <span>gelernt {learned(pool, progress, mode)} / {pool.length}</span>
         </div>
         <Card>
@@ -95,7 +126,6 @@ function Game() {
             );
           })}
         </div>
-        {picked && <Button size="lg" onClick={() => next(progress, q.code)}>Weiter</Button>}
       </main>
     );
   }
@@ -131,7 +161,11 @@ function Game() {
         Start ({pool.length} Karten)
       </Button>
       {pool.length < 4 && <p className="text-sm text-muted-foreground">Wähle mindestens 4 Länder aus.</p>}
-      <p className="mt-auto text-xs text-muted-foreground">
+      <div className="mt-auto flex gap-2">
+        <Button variant="ghost" size="sm" onClick={exportProgress}>Fortschritt kopieren</Button>
+        <Button variant="ghost" size="sm" onClick={importProgress}>Fortschritt einfügen</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
         Daten: mledoze/countries (ODbL), Wikidata, flagcdn.com
       </p>
     </main>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOptions, buildPool, grade, pickQuestion, type Country } from "./quiz";
+import { buildOptions, buildPool, grade, parseProgress, pickQuestion, type Country } from "./quiz";
 
 const mk = (code: string, region: string, capital: string | null = code + "-city", independent = true): Country => ({
   code, name: code + "-land", capital, region, independent,
@@ -31,5 +31,11 @@ describe("quiz", () => {
     const progress = { "capital:A": 4, "capital:B": 4, "capital:C": 4 };
     expect(pickQuestion(pool, progress, "capital", undefined, () => 0.5).code).toBe("D");
     expect(pickQuestion(pool, progress, "capital", "D", () => 0.99).code).not.toBe("D");
+  });
+
+  it("imports only valid progress", () => {
+    expect(parseProgress('{"flag:AT":2,"flag:DE":9,"x":"a"}')).toEqual({ "flag:AT": 2 });
+    expect(parseProgress("nope")).toBeNull();
+    expect(parseProgress("[1]")).toBeNull();
   });
 });
