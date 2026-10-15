@@ -20,7 +20,7 @@ export const REGIONS: Record<string, string> = {
   Antarctic: "Antarktis",
 };
 
-export const MAX_BOX = 4;
+export const MAX_BOX = 3;
 export const key = (mode: Mode, c: Country) => `${mode}:${c.code}`;
 
 export const answerOf = (mode: Mode, c: Country) => (mode === "capital" ? c.capital! : c.name);
@@ -34,6 +34,10 @@ export function buildPool(all: Country[], s: Settings): Country[] {
   );
 }
 
+// Unseen cards beat once-answered ones, so a hit does not come right back; misses (box 0) return soon.
+const WEIGHTS = [30, 1, 0.3, 0.1];
+const weightOf = (box?: number) => (box === undefined ? 4 : WEIGHTS[Math.min(box, MAX_BOX)]);
+
 // Lower Leitner box = higher weight; never repeats `lastCode` when avoidable.
 export function pickQuestion(
   pool: Country[],
@@ -43,7 +47,7 @@ export function pickQuestion(
   rnd: () => number = Math.random,
 ): Country {
   const cands = pool.length > 1 ? pool.filter((c) => c.code !== lastCode) : pool;
-  const weights = cands.map((c) => 2 ** -(progress[key(mode, c)] ?? 0));
+  const weights = cands.map((c) => weightOf(progress[key(mode, c)]));
   let r = rnd() * weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < cands.length; i++) {
     r -= weights[i];
@@ -70,16 +74,19 @@ export function grade(progress: Progress, k: string, correct: boolean): Progress
   return { ...progress, [k]: correct ? Math.min((progress[k] ?? 0) + 1, MAX_BOX) : 0 };
 }
 
-export const learned = (pool: Country[], progress: Progress, mode: Mode) =>
-  pool.filter((c) => (progress[key(mode, c)] ?? 0) >= MAX_BOX).length;
+// Overall progress 0..1: every hit moves it, a miss sets that card back to 0.
+export const mastery = (pool: Country[], progress: Progress, mode: Mode) =>
+  pool.length
+    ? pool.reduce((sum, c) => sum + Math.min(progress[key(mode, c)] ?? 0, MAX_BOX), 0) / (pool.length * MAX_BOX)
+    : 0;
 
 // Trust boundary: text pasted by the user. Keeps only valid box values.
 export function parseProgress(text: string): Progress | null {
   try {
     const o = JSON.parse(text);
     if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-    const valid = Object.entries(o).filter(([, v]) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= MAX_BOX);
-    return valid.length ? (Object.fromEntries(valid) as Progress) : null;
+    const valid = Object.entries(o).filter(([, v]) => Number.isInteger(v) && (v as number) >= 0);
+    return valid.length ? (Object.fromEntries(valid.map(([k, v]) => [k, Math.min(v as number, MAX_BOX)])) as Progress) : null;
   } catch {
     return null;
   }
